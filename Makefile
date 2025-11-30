@@ -1,7 +1,5 @@
 CC      := gcc
 CFLAGS  := -Wall -Wextra -Wpedantic -std=c11 -O2 -march=native
-# This single line fixes strdup() on every single system (Linux, macOS, BSD, etc.)
-#CFLAGS  += -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700
 CFLAGS  += -D_GNU_SOURCE
 
 SRC     := kg.c
