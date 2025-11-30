@@ -1,6 +1,5 @@
 CC      := gcc
-CFLAGS  := -Wall -Wextra -Wpedantic -std=c11 -O2 -march=native
-CFLAGS  += -D_GNU_SOURCE
+CFLAGS  := -Wall -Wextra -Wpedantic -O2 -march=native
 
 SRC     := kg.c
 TARGET  := kg
