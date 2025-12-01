@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,10 +64,11 @@ void kg_print(const KGContext* ctx) {
     printf("Triples : %zu\n\n", ctx->triples.n);
     for (size_t i = 0; i < ctx->triples.n; ++i) {
         Triple t = ctx->triples.t[i];
+
         printf("%s --[%s]--> %s\n",
-               kg_str((KGContext*)ctx, t.s),
-               kg_str((KGContext*)ctx, t.p),
-               kg_str((KGContext*)ctx, t.o));
+            kg_str((KGContext*)ctx, t.s),
+            kg_str((KGContext*)ctx, t.p),
+            kg_str((KGContext*)ctx, t.o));
     }
 }
 
