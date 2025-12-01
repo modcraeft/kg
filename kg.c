@@ -1,154 +1,142 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 
 typedef uint32_t EntityID;
-#define INVALID_ID ((EntityID)0)
+#define INVALID_ID 0
 
-typedef struct {
-    char** strings;
-    size_t count;
-    size_t capacity;
+typedef struct { 
+	char** s; 
+	size_t n;
+	size_t cap; 
 } StringTable;
 
-typedef struct {
-    EntityID subject;
-    EntityID predicate;
-    EntityID object;
+typedef struct { 
+	EntityID s, p, o; 
 } Triple;
 
-typedef struct {
-    Triple* triples;
-    size_t count;
-    size_t capacity;
+typedef struct { 
+	Triple* t; 
+	size_t n;
+	size_t cap; 
 } TripleStore;
 
-typedef struct {
-    StringTable strings;
-    TripleStore triples;
+typedef struct { 
+	StringTable strings; 
+	TripleStore triples; 
 } KGContext;
 
-//Dynamic array helper
-static void* grow(void* ptr, size_t elem_size, size_t* cap) {
-    if (*cap == 0) *cap = 64;
-    else *cap *= 2;
-    return realloc(ptr, elem_size * (*cap));
+static void* grow(void* p, size_t es, size_t* cap) {
+    if (*cap == 0) *cap = 64; else *cap *= 2;
+    return realloc(p, es * (*cap));
 }
 
-//Init
 void kg_init(KGContext* ctx) {
-    ctx->strings.strings = NULL;
-    ctx->strings.count = ctx->strings.capacity = 0;
-    ctx->triples.triples = NULL;
-    ctx->triples.count = ctx->triples.capacity = 0;
+    ctx->strings.s = NULL; ctx->strings.n = ctx->strings.cap = 0;
+    ctx->triples.t = NULL; ctx->triples.n = ctx->triples.cap = 0;
 }
 
-//Intern string - return EntityID
 EntityID kg_intern(KGContext* ctx, const char* str) {
-    for (size_t i = 0; i < ctx->strings.count; ++i)
-        if (strcmp(ctx->strings.strings[i], str) == 0)
+    for (size_t i = 0; i < ctx->strings.n; ++i)
+        if (strcmp(ctx->strings.s[i], str) == 0)
             return (EntityID)(i + 1);
-
-    if (ctx->strings.count == ctx->strings.capacity)
-        ctx->strings.strings = grow(ctx->strings.strings, sizeof(char*), &ctx->strings.capacity);
-
-    ctx->strings.strings[ctx->strings.count] = strdup(str);
-    return ++ctx->strings.count;
+    if (ctx->strings.n == ctx->strings.cap)
+        ctx->strings.s = grow(ctx->strings.s, sizeof(char*), &ctx->strings.cap);
+    ctx->strings.s[ctx->strings.n] = strdup(str);
+    return ++ctx->strings.n;
 }
 
 const char* kg_str(KGContext* ctx, EntityID id) {
-    if (id == 0 || id > ctx->strings.count) return "<invalid>";
-    return ctx->strings.strings[id - 1];
+    return (id == 0 || id > ctx->strings.n) ? "<invalid>" : ctx->strings.s[id-1];
 }
 
 void kg_add(KGContext* ctx, EntityID s, EntityID p, EntityID o) {
-    if (ctx->triples.count == ctx->triples.capacity)
-        ctx->triples.triples = grow(ctx->triples.triples, sizeof(Triple), &ctx->triples.capacity);
-    ctx->triples.triples[ctx->triples.count++] = (Triple){s, p, o};
+    if (ctx->triples.n == ctx->triples.cap)
+        ctx->triples.t = grow(ctx->triples.t, sizeof(Triple), &ctx->triples.cap);
+    ctx->triples.t[ctx->triples.n++] = (Triple){s, p, o};
 }
 
-//MACROS - for pre-interned EntityIDs
-#define LIT(ctx, literal)     kg_intern(ctx, literal)     // for string literals only
-#define ADD(ctx, s, p, o)     kg_add(ctx, s, p, o)        // use after entities are created!
-
 void kg_print(const KGContext* ctx) {
-    printf("=== Knowledge Graph ===\n");
-    printf("Entities: %zu\n", ctx->strings.count);
-    printf("Triples : %zu\n\n", ctx->triples.count);
-    for (size_t i = 0; i < ctx->triples.count; ++i) {
-        Triple t = ctx->triples.triples[i];
+    printf("Knowledge Graph\n");
+    printf("Entities: %zu\n", ctx->strings.n);
+    printf("Triples : %zu\n\n", ctx->triples.n);
+    for (size_t i = 0; i < ctx->triples.n; ++i) {
+        Triple t = ctx->triples.t[i];
         printf("%s --[%s]--> %s\n",
-               kg_str((KGContext*)ctx, t.subject),
-               kg_str((KGContext*)ctx, t.predicate),
-               kg_str((KGContext*)ctx, t.object));
+               kg_str((KGContext*)ctx, t.s),
+               kg_str((KGContext*)ctx, t.p),
+               kg_str((KGContext*)ctx, t.o));
     }
 }
 
 void kg_free(KGContext* ctx) {
-    for (size_t i = 0; i < ctx->strings.count; ++i) free(ctx->strings.strings[i]);
-    free(ctx->strings.strings);
-    free(ctx->triples.triples);
+    for (size_t i = 0; i < ctx->strings.n; ++i) free(ctx->strings.s[i]);
+    free(ctx->strings.s); free(ctx->triples.t);
 }
 
-int main(void) {
+int kg_load_text(KGContext* ctx, const char* path) {
+    FILE* f = fopen(path, "r");
+    if (!f) { perror("fopen"); return -1; }
+
+    EntityID doc      = kg_intern(ctx, "document");
+    EntityID contains = kg_intern(ctx, "contains");
+    EntityID next_to  = kg_intern(ctx, "next-to");
+    EntityID part_of  = kg_intern(ctx, "part-of");
+
+    char* line = NULL;
+    size_t len = 0;
+    int sentence_id = 0;
+
+    while (getline(&line, &len, f) != -1) {
+        char* l = line;
+        while (isspace(*l)) l++;
+        if (*l == '\0' || *l == '#') continue;
+
+        sentence_id++;
+        char sent_name[32];
+        snprintf(sent_name, sizeof(sent_name), "sentence-%d", sentence_id);
+        EntityID sentence = kg_intern(ctx, sent_name);
+
+        kg_add(ctx, sentence, part_of, doc);
+
+        char* token = strtok(l, " \t\r\n.,!?;:\n");
+        EntityID prev = 0;
+
+        while (token) {
+            // Skip very short tokens
+            if (strlen(token) < 1) { token = strtok(NULL, " \t\r\n.,!?;:"); continue; }
+
+            EntityID word = kg_intern(ctx, token);
+            kg_add(ctx, sentence, contains, word);
+            if (prev) kg_add(ctx, prev, next_to, word);
+            prev = word;
+
+            token = strtok(NULL, " \t\r\n.,!?;:");
+        }
+    }
+
+    free(line);
+    fclose(f);
+    return 0;
+}
+
+int main(int argc, char** argv) {
+
     KGContext ctx;
     kg_init(&ctx);
 
-    //Create predicate entities once
-    EntityID IS_A       = LIT(&ctx, "is-a");
-    EntityID PART_OF    = LIT(&ctx, "part-of");
-    EntityID CONTAINS   = LIT(&ctx, "contains");
-    EntityID NEXT_TO    = LIT(&ctx, "next-to");
-    EntityID HAS_LETTER = LIT(&ctx, "has-letter");
+    if (argc >= 2) {
+        printf("Loading text file: %s\n\n", argv[1]);
+        if (kg_load_text(&ctx, argv[1]) != 0) return 1;
+    } else {
+        fprintf(stderr, "Usage: kg text_file.txt\n\n");
+		return 1;
+    }
 
-    //Create leaf entities
-    EntityID A  = LIT(&ctx, "A");
-    EntityID H  = LIT(&ctx, "H");
-    EntityID E  = LIT(&ctx, "E");
-    EntityID L  = LIT(&ctx, "L");
-    EntityID O  = LIT(&ctx, "O");
-    EntityID W  = LIT(&ctx, "W");
-    EntityID R  = LIT(&ctx, "R");
-    EntityID D  = LIT(&ctx, "D");
-
-    EntityID hello = LIT(&ctx, "hello");
-    EntityID world = LIT(&ctx, "world");
-    EntityID sentence = LIT(&ctx, "Hello world.");
-    EntityID paragraph = LIT(&ctx, "first-paragraph");
-
-    //Now build the graph using raw EntityIDs
-    ADD(&ctx, LIT(&ctx, "A"),            IS_A,       LIT(&ctx, "letter"));
-    ADD(&ctx, hello,                     IS_A,       LIT(&ctx, "word"));
-    ADD(&ctx, world,                     IS_A,       LIT(&ctx, "word"));
-    ADD(&ctx, sentence,                  IS_A,       LIT(&ctx, "sentence"));
-    ADD(&ctx, paragraph,                 IS_A,       LIT(&ctx, "paragraph"));
-
-    //Letter composition
-    ADD(&ctx, hello, HAS_LETTER, H);
-    ADD(&ctx, hello, HAS_LETTER, E);
-    ADD(&ctx, hello, HAS_LETTER, L);
-    ADD(&ctx, hello, HAS_LETTER, L);
-    ADD(&ctx, hello, HAS_LETTER, O);
-
-    ADD(&ctx, world, HAS_LETTER, W);
-    ADD(&ctx, world, HAS_LETTER, O);
-    ADD(&ctx, world, HAS_LETTER, R);
-    ADD(&ctx, world, HAS_LETTER, L);
-    ADD(&ctx, world, HAS_LETTER, D);
-
-    //Sentence structure
-    ADD(&ctx, sentence, CONTAINS, hello);
-    ADD(&ctx, sentence, CONTAINS, world);
-    ADD(&ctx, hello,    NEXT_TO,  world);
-
-    //Hierarchy
-    ADD(&ctx, sentence, PART_OF, paragraph);
-
-    //Print result
     kg_print(&ctx);
-
-    // Cleanup
     kg_free(&ctx);
 
     return 0;

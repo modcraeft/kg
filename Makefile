@@ -13,13 +13,13 @@ all: $(TARGET)
 
 $(TARGET): $(SRC)
 	$(CC) $(CFLAGS) -o $@ $<
-	@echo "Build complete → ./$(TARGET)"
+	@echo "Build complete: ./$(TARGET)"
 
 debug: $(DEBUG_TARGET)
 
 $(DEBUG_TARGET): $(SRC)
 	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) -o $@ $<
-	@echo "Debug build with sanitizers → ./$(DEBUG_TARGET)"
+	@echo "Debug build with sanitizers: ./$(DEBUG_TARGET)"
 
 run: $(TARGET)
 	./$(TARGET)
