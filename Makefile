@@ -1,46 +1,26 @@
 CC      := gcc
 CFLAGS  := -Wall -Wextra -Wpedantic -O2 -march=native
+LDLIBS  := -lm
+SDL     := $(shell pkg-config --cflags --libs sdl2 2>/dev/null || echo "-lSDL2 -lm")
 
-SRC     := kg.c
-TARGET  := kg
+BUILD   := build
 
-DEBUG_TARGET := kg_debug
-DEBUG_CFLAGS  := -O0 -g -fsanitize=address,undefined
+all: $(BUILD)/kg $(BUILD)/kg_vis
 
-.PHONY: all clean debug run rund valgrind rebuild help
+$(BUILD)/kg: src/kg.c | $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@ $(LDLIBS)
 
-all: $(TARGET)
+$(BUILD)/kg_vis: src/kg_vis.c | $(BUILD)
+	$(CC) $(CFLAGS) $< -o $@ $(LDLIBS) $(SDL)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $@ $<
-	@echo "Build complete: ./$(TARGET)"
+$(BUILD):
+	mkdir -p $(BUILD)
 
-debug: $(DEBUG_TARGET)
+run: $(BUILD)/kg
+	$(BUILD)/kg text.txt
 
-$(DEBUG_TARGET): $(SRC)
-	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) -o $@ $<
-	@echo "Debug build with sanitizers: ./$(DEBUG_TARGET)"
-
-run: $(TARGET)
-	./$(TARGET)
-
-rund: debug
-	./$(DEBUG_TARGET)
-
-valgrind: debug
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(DEBUG_TARGET)
+vis: $(BUILD)/kg_vis
+	$(BUILD)/kg_vis text.txt
 
 clean:
-	rm -f $(TARGET) $(DEBUG_TARGET)
-
-rebuild: clean all
-
-help:
-	@echo "Targets:"
-	@echo "  all      – normal optimized build"
-	@echo "  debug    – build with -fsanitize=address,undefined"
-	@echo "  run      – build + run normal"
-	@echo "  rund     – debug + run"
-	@echo "  valgrind – run under valgrind"
-	@echo "  clean    – remove binaries"
-	@echo "  rebuild  – clean + build"
+	rm -rf $(BUILD)
